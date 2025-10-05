@@ -1,0 +1,84 @@
+name: Android Build Test
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 📥 检出代码
+      uses: actions/checkout@v4
+    
+    - name: ☕ 设置 JDK 17
+      uses: actions/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+        cache: gradle
+    
+    - name: 🔧 设置 Gradle Wrapper
+      run: |
+        chmod +x gradlew
+        
+    - name: 📦 下载依赖
+      continue-on-error: true
+      run: |
+        ./gradlew dependencies --stacktrace 2>&1 | tee dependencies.log
+    
+    - name: 🏗️ 执行真实的 Gradle 构建
+      continue-on-error: true
+      run: |
+        echo "========================================" | tee -a full_build.log
+        echo "开始真实的 Android 构建" | tee -a full_build.log
+        echo "时间: $(date)" | tee -a full_build.log
+        echo "========================================" | tee -a full_build.log
+        echo "" | tee -a full_build.log
+        ./gradlew clean assembleDebug --stacktrace --info 2>&1 | tee -a full_build.log
+        echo "" | tee -a full_build.log
+        echo "========================================" | tee -a full_build.log
+        echo "构建结束" | tee -a full_build.log
+        echo "========================================" | tee -a full_build.log
+    
+    - name: 📋 汇总详细日志
+      if: always()
+      run: |
+        echo "========================================" > detailed_build_log.txt
+        echo "Android 真实构建失败日志" >> detailed_build_log.txt
+        echo "========================================" >> detailed_build_log.txt
+        echo "" >> detailed_build_log.txt
+        echo "仓库: ${{ github.repository }}" >> detailed_build_log.txt
+        echo "提交: ${{ github.sha }}" >> detailed_build_log.txt
+        echo "构建时间: $(date)" >> detailed_build_log.txt
+        echo "" >> detailed_build_log.txt
+        echo "========================================" >> detailed_build_log.txt
+        echo "完整构建日志:" >> detailed_build_log.txt
+        echo "========================================" >> detailed_build_log.txt
+        cat full_build.log >> detailed_build_log.txt 2>/dev/null || echo "无构建日志" >> detailed_build_log.txt
+        echo "" >> detailed_build_log.txt
+        echo "========================================" >> detailed_build_log.txt
+        echo "依赖信息:" >> detailed_build_log.txt
+        echo "========================================" >> detailed_build_log.txt
+        cat dependencies.log >> detailed_build_log.txt 2>/dev/null || echo "无依赖日志" >> detailed_build_log.txt
+        echo "" >> detailed_build_log.txt
+        echo "========================================" >> detailed_build_log.txt
+        echo "项目结构:" >> detailed_build_log.txt
+        echo "========================================" >> detailed_build_log.txt
+        find . -type f -name "*.java" -o -name "*.gradle" -o -name "*.xml" | grep -v ".gradle/" >> detailed_build_log.txt
+        echo "" >> detailed_build_log.txt
+        echo "日志文件大小: $(wc -l detailed_build_log.txt | awk '{print $1}') 行" >> detailed_build_log.txt
+        
+    - name: 📤 上传完整构建日志
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: full-build-logs
+        path: |
+          detailed_build_log.txt
+          full_build.log
+          dependencies.log
+          **/*.log
+        retention-days: 7
